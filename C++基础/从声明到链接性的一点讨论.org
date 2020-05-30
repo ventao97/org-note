@@ -1,0 +1,63 @@
+#+TITLE: 从声明到链接性的一点讨论
+#+AUTHOR: ventao1997@gmail.com
+#+OPTIONS: ^:nil
+* 为什么有声明和定义的区别？
+这是为了支持分离式编译而设计的，分离式编译允许把程序拆成多个逻辑部分来编写，当程序被分为多个文件，则需要有在文件间共享代码的方式，
+这就是声明和定义的区别由来，声明使得名字为程序所知，一个文件如果想要使用别处的名字则必须包含对那个名字的声明，而定义负责制创建于名字关联的实体。
+
+* 从声明到作用域、存储期，链接性以及存储类型修饰符
+前面我们说到声明使得名字能为程序所知，但是这种可知性是多方面的且含义丰富的，具体的来说，它包含了作用域、存储期、链接性这几种概念：
+
+对于程序员来说，作用域的概念可谓是深入人心了，只有作用域内才能合法的引用相关的函数/变量等等，C++里面规定了以下几种作用域：
+- Block scope
+- Function parameter scope
+- Function scope
+- Namespace scope，我们常说的全局作用域也是namespace scope的一种
+- Enumeration scope
+- Template parameter scope
+
+并且关于作用域开始的点也有相应的规则描述，这两部分可以参见：[[https://en.cppreference.com/w/cpp/language/scope][Scope - cppreference: Baic Concepts]]
+
+但是，作用域更多体现的是变量与其他代码间的交互上，它反映的仅仅是语法层面名称的存在性问题，例如：一个定义在局部代码块中的变量，在代码块以外就不可用了，但是为什么不可用呢？
+这里引出了一个更深层次的问题，名称的存在性反映的是与该名称对应的实体的存在，即存储期的概念。
+
+与作用域不太一样，存储期是从变量自身的角度来看待可知性问题。体现的是程序运行时的存在性问题，在C++中，程序中的所有对象都具有下列存储期之一：
+- 自动(automatic)存储期：对象的存储在外围代码块开始时分配，而在结束时解分配。未声明为 static、extern 或 thread_local 的所有局部对象均拥有此存储期。
+- 静态(static)存储期：对象的存储在程序开始时分配，而在程序结束时解分配。只存在对象的一个实例。所有声明于命名空间作用域（包含全局命名空间）的对象，加上声明带有 static 或 extern 的对象均拥有此存储期。
+- 线程(thread)存储期：对象的存储在线程开始时分配，而在线程结束时解分配。每个线程拥有其自身的对象实例。
+- 动态(dynamic)存储期：对象的存储是通过使用动态内存分配函数来按请求进行分配和解分配的。
+
+而链接性呢？这里就牵涉到C++语言的编译过程了，众所周知，C++程序的编译分为以下几个部分：
+- 预处理阶段，执行头文件包含操作、宏定义的替换、条件编译指令等等内容，这个时候每个CPP文件将会将其包含的头文件，以及头文件中包含的头文件添加到自身，形成.i文件
+- 编译阶段，这个过程将完整的C++代码翻译成为汇编语言代码，即.s文件
+- 汇编阶段，将汇编代码范围为机器码，生成二进制文件，即.obj文件
+- 链接阶段，由链接器将所有的.obj文件组合起来，生成一个完整的可执行程序。
+
+那么由于各个编译单元(cpp文件)内或多或少的包含一些公共的共享变量，这些共享变量在每个编译单元内都有，但是语义上都指代同一个东西，这就要求编译器能够正确识别哪些是共享的变量，哪些不是共享的变量，
+因此，所谓的链接性描述的是链接时可共享的程度，C++中链接性分为三种：
+- 无链接性，即变量不可以被共享
+- 内部链接性，即在本编译单元内可以共享的
+- 外部链接性，即可以在编译单元间共享
+
+这三种链接性的规则描述可以参见：[[https://en.cppreference.com/w/cpp/language/storage_duration][Storage duration - cppreference: Basic Concepts]]
+
+从上面我们知道了作用域是通过语法规则来描述的，那么存储期和链接性又是怎么限定的呢？这里就必须提到存储类型修饰符了，即Storage class specifiers。它包含了链接性和存储期两方面的含义
+
+在C++中，存储类型修饰是声明语法的一个可选部分，C++目前可用的存储类型修饰符是以下5种：
+- auto(C++11以前)，自动存储期，
+- register(C++11以前)，自动存储期
+- static，static/thread存储期，以及内部链接性（如果是在Block Scope中则无链接性）
+- extern，static/thread存储期，以及外部链接性
+- thread_local，thread存储期。
+- mutable，对存储期/链接性无影响（不知道C++文档为什么把这个修饰符也算作存储类型修饰符）
+
+* 重要的规则
+** 链接性
+- 函数内部的普通变量/static变量都是无链接性的
+- cpp中定义的const全局变量是内部链接的，而非外部链接的。这是为了支持直接在头文件中定义const <基本类型> <变量名> = xxx;的写法。如果需要const变量也具有外部链接性，则需要在定义和外部引用时都添加extern关键字
+- thread_local能和extern/static共用，这是为了解决链接性的问题，但是static不能与extern共用，因为这两者的链接性是完全相反的
+
+* 参考文档
+- [[https://en.cppreference.com/w/cpp/language/scope][Scope - cppreference: Baic Concepts]]
+- [[https://en.cppreference.com/w/cpp/language/storage_duration][Storage duration - cppreference: Basic Concepts]]
+- [[https://docs.microsoft.com/en-us/cpp/cpp/storage-classes-cpp?view=vs-2019][Storage Class - MSDN]]
